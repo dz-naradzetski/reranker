@@ -12,7 +12,7 @@ multilingual capabilities.
 You can run application in docker with:
 
 ``` shell
-docker compose up --build
+docker run --rm --runtime nvidia --gpus=all  -p 8787:8787  -v ./cache/:/home/appuser/.cache -it $(docker build -q .)
 ```
 
 Check available options in `compose.yaml`.
