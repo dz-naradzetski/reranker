@@ -1,23 +1,13 @@
-"""
-This module provides a FastAPI application that uses sequence classification
-to rank documents based on their similarity to a given query.
-
-The application accepts POST requests to the '/api/v1/rerank'
-endpoint, which takes in a RequestData object containing the query and
-a list of Document objects. It then constructs pairs of query and
-document texts for scoring. The ranked documents with their
-corresponding similarity scores are returned as a ResponseData object.
-
-"""
-
 import os
 import logging
+import operator
 from uuid import UUID
 from typing import List, Union
 from fastapi import FastAPI
 from pydantic import BaseModel
-import torch
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from langchain_community.cross_encoders import HuggingFaceCrossEncoder
+
+
 
 port = int(os.getenv("PORT", "8787"))
 max_length=int(os.getenv("MAX_LENGTH", "512"))
@@ -30,10 +20,8 @@ logging.info("max_length: %d", max_length)
 logging.info("model: %s", model_name)
 logging.info("device: %s", device)
 
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForSequenceClassification.from_pretrained(model_name)
-model = model.to(device)
-model.eval()
+cross_encoder_model = HuggingFaceCrossEncoder(model_name=model_name)
+
 
 app = FastAPI()
 
@@ -64,6 +52,7 @@ class RequestData(BaseModel):
         pair consists of the query and a document's text.
     """
 
+    limit: int = 1000
     query: str
     documents: List[Document]
 
@@ -76,7 +65,7 @@ class RequestData(BaseModel):
             query and a document's text.
 
         """
-        return [[self.query, doc.text] for doc in self.documents]
+        return [[self.query, doc.text] for doc in self.documents[:self.limit]]
 
 class ResponseData(BaseModel):
     """
@@ -107,14 +96,11 @@ async def rerank_documents(request: RequestData):
 
     response = []
     pairs = request.construct_pairs()
-    with torch.no_grad():
-        inputs = tokenizer(pairs, padding=True, truncation=True,
-                           return_tensors="pt", max_length=max_length).to(device)
-        scores = model(**inputs, return_dict=True).logits.view(-1, ).float()
-        result = zip(request.documents, scores)
-        for doc, score in result:
-            response.append({"id": doc.id, "similarity": score.item()})
-    response.sort(key=lambda elt: elt['similarity'], reverse=True)
+    scores = cross_encoder_model.score(pairs)
+    docs_with_scores = list(zip(request.documents, scores))
+    result = sorted(docs_with_scores, key=operator.itemgetter(1), reverse=True)
+    for doc, score in result:
+        response.append({"id": doc.id, "similarity": score})
     return {"data": response}
 
 if __name__ == "__main__":
