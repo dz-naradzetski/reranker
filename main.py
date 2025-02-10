@@ -1,6 +1,5 @@
 import os
 import logging
-import operator
 from uuid import UUID
 from typing import List, Union
 from fastapi import FastAPI
@@ -98,8 +97,7 @@ async def rerank_documents(request: RequestData):
     pairs = request.construct_pairs()
     scores = cross_encoder_model.score(pairs).tolist()
     docs_with_scores = list(zip(request.documents, scores))
-    result = sorted(docs_with_scores, key=operator.itemgetter(1), reverse=True)
-    for doc, score in result:
+    for doc, score in docs_with_scores:
         response.append({"id": doc.id, "similarity": score})
     return {"data": response}
 
