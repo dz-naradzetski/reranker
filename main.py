@@ -12,7 +12,7 @@ from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 port = int(os.getenv("PORT", "8787"))
 max_length=int(os.getenv("MAX_LENGTH", "512"))
 model_name=os.getenv("MODEL", "BAAI/bge-reranker-v2-m3")
-device=os.getenv("DEVICE")
+device=os.getenv("DEVICE", "cuda")
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s:     %(message)s')
 logging.info("port: %d", port)
@@ -20,6 +20,7 @@ logging.info("max_length: %d", max_length)
 logging.info("model: %s", model_name)
 logging.info("device: %s", device)
 
+model_kwargs = {"device": device}
 cross_encoder_model = HuggingFaceCrossEncoder(model_name=model_name)
 
 
@@ -52,7 +53,6 @@ class RequestData(BaseModel):
         pair consists of the query and a document's text.
     """
 
-    limit: int = 1000
     query: str
     documents: List[Document]
 
@@ -65,7 +65,7 @@ class RequestData(BaseModel):
             query and a document's text.
 
         """
-        return [[self.query, doc.text] for doc in self.documents[:self.limit]]
+        return [[self.query, doc.text] for doc in self.documents]
 
 class ResponseData(BaseModel):
     """
@@ -96,7 +96,7 @@ async def rerank_documents(request: RequestData):
 
     response = []
     pairs = request.construct_pairs()
-    scores = cross_encoder_model.score(pairs)
+    scores = cross_encoder_model.score(pairs).tolist()
     docs_with_scores = list(zip(request.documents, scores))
     result = sorted(docs_with_scores, key=operator.itemgetter(1), reverse=True)
     for doc, score in result:
