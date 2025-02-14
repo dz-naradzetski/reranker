@@ -5,6 +5,7 @@ from typing import List, Union
 from fastapi import FastAPI
 from pydantic import BaseModel
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
+from FlagEmbedding import FlagLLMReranker
 
 
 
@@ -21,7 +22,7 @@ logging.info("device: %s", device)
 
 model_kwargs = {"device": device}
 cross_encoder_model = HuggingFaceCrossEncoder(model_name=model_name)
-
+reranker = FlagLLMReranker(model_name, use_fp16=True)
 
 app = FastAPI()
 
@@ -96,6 +97,29 @@ async def rerank_documents(request: RequestData):
     response = []
     pairs = request.construct_pairs()
     scores = cross_encoder_model.score(pairs).tolist()
+    docs_with_scores = list(zip(request.documents, scores))
+    for doc, score in docs_with_scores:
+        response.append({"id": doc.id, "similarity": score})
+    return {"data": response}
+
+@app.post("/api/v1/llmrerank")
+async def llm_rerank_documents(request: RequestData):
+    """
+    Ranks a list of documents based on their similarity to a given query using
+    sequence classification.
+
+    Args:
+        request (RequestData): A RequestData object containing the query and
+        a list of Document objects.
+
+    Returns:
+        A ResponseData object containing the ranked documents with their
+        corresponding similarity scores.
+    """
+
+    response = []
+    pairs = request.construct_pairs()
+    scores = [reranker.compute_score([pair]) for pair in pairs]
     docs_with_scores = list(zip(request.documents, scores))
     for doc, score in docs_with_scores:
         response.append({"id": doc.id, "similarity": score})
