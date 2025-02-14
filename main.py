@@ -119,7 +119,7 @@ async def llm_rerank_documents(request: RequestData):
 
     response = []
     pairs = request.construct_pairs()
-    scores = [reranker.compute_score([pair]) for pair in pairs]
+    scores = [reranker.compute_score([pair], normalize=True) for pair in pairs]
     docs_with_scores = list(zip(request.documents, scores))
     for doc, score in docs_with_scores:
         response.append({"id": doc.id, "similarity": score})
